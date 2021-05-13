@@ -1,0 +1,45 @@
+unknown command "cluster" for "kops"
+root@ip-172-31-34-112:/opt/k8s# kops edit cluster jitu.demo.valaxy.net
+  channel: stable
+  cloudProvider: aws
+  configBase: s3://jitu.demo/jitu.demo.valaxy.net
+  dnsZone: valaxy.net
+  etcdClusters:
+  - cpuRequest: 200m
+    etcdMembers:
+    - instanceGroup: master-us-east-2b
+      name: b
+    memoryRequest: 100Mi
+    name: main
+  - cpuRequest: 100m
+    etcdMembers:
+    - instanceGroup: master-us-east-2b
+      name: b
+    memoryRequest: 100Mi
+    name: events
+  iam:
+    allowContainerRegistry: true
+    legacy: false
+  kubelet:
+    anonymousAuth: false
+  kubernetesApiAccess:
+  - 0.0.0.0/0
+  kubernetesVersion: 1.15.12
+  masterInternalName: api.internal.jitu.demo.valaxy.net
+  masterPublicName: api.jitu.demo.valaxy.net
+  networkCIDR: 172.20.0.0/16
+  networking:
+    kubenet: {}
+  nonMasqueradeCIDR: 100.64.0.0/10
+  sshAccess:
+  - 0.0.0.0/0
+  subnets:
+  - cidr: 172.20.32.0/19
+    name: us-east-2b
+    type: Public
+    zone: us-east-2b
+  topology:
+    dns:
+      type: Private
+    masters: public
+    nodes: public

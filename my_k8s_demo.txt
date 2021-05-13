@@ -1,0 +1,1190 @@
+persistant volume:
+-----------------
+apiVersion: v1
+kind: Persistantvolume
+metadata:
+  name: pv-volume
+  label:
+   type: local
+spec:
+  StoargeClass:manual
+  capacity:
+    storage: 10Gi
+  accessmode:
+   -readwriteonce
+  hostpath: 
+    path: "mnt/data"
+
+
+persistantvolumeclaim:
+-----------------------
+apiversion: v1
+kind: PersistantVolumeClaim
+metadata:
+  name: pv-volume-claim
+spec:
+  StorageClass: manual
+  resorces:
+    request:
+     storage: 2Gi
+ 
+pod with persistant volume:
+--------------------------
+
+apsiversion: v1
+kind: pod
+metadata:
+  name: volume-pod
+  label:
+    app: webapp
+spec:
+  container:
+    name: volume-container
+    image: nginx:1.16.1
+  ports: 80:8080
+  volumemounts:
+    -name: pv-storage
+     mountpath: "/var/lib/usr"
+
+  volumes:
+   name: pv-storage
+   PersistantVoumeClaim:
+     ClaimName: pv-volume-claim
+
+mysql-deployment:
+-------------------
+
+apiversion: apps/v1
+kind: deployment
+metadata: 
+   name: mysql-deployment
+   label:
+     app: mysql
+
+spec:
+ selector:
+  #replicas: 3
+  strategy: 
+     type: recreat
+  matchLabel:
+   app: mysql
+
+ template:
+    metadata:
+    label: 
+      app: mysql
+    container:
+      name: mysql-conatiner
+      image: mysql:5.7
+      env:
+        - name: mysql_root_user
+          value: password
+      Volumemounts:
+         - name: my-volume
+           mountpath: "/var/lib"
+
+  volumes:
+ -  name: my-volume
+    PersistantVolumeClaim: 
+      claimName: pv-volume-claim 
+
+
+
+
+ansible-playbook:
+-----------------
+---
+- host: localhost
+  become: true
+  task:
+   - name: stop httpd
+     services:
+       name: httpd
+       state: stop
+     ignore_errors: yes
+   
+  
+   - name: remove httpd
+     yum:
+      name: httpd
+      state: removed
+    ignore_errors: yes
+  
+   - name: install httpd
+     yum:
+      name: httpd
+      state: install
+     register: output
+     ignore_errors: yes
+     notify: start httpd
+   
+  - name: fetch output
+    debug:
+      msg: "{{output}}"
+  
+  handler:
+    - name: start httpd
+      service:
+        name: httpd
+        state: start
+
+
+
+
+projectedvolume:
+
+-------------------
+->uses to mount secrets, configmaps etc to pods
+
+
+apivesrsion: v1
+kind: pod
+metadata: 
+  name: test-projected-volume
+
+spec:
+  container:
+    - name: test-projected-volume
+      image: busybox
+      port: 8080
+     
+      volumemounts:
+         - name: my-volume
+           path: "/projected-volume"
+           readonly: true
+
+  volumes:
+    - name: my-volume
+      projected:
+          sources:
+          - secret:
+            name: user
+         -  secret:
+            name: pass
+
+
+kubectl create secret generic user --from-file=./user.txt
+
+kubectl create secret generic pass --from-file=./pass.txt
+
+
+echo -n "admin" >user.txt
+echo -n "passsword" .pass.txt
+
+
+securityContext demo(on a pod):
+
+------------------------
+
+apiversion: v1
+kind: pod
+metadata:
+  name: security-context-demo
+
+spec:
+  SecurityContext:
+    RunAsUser: jitu
+    RunAsGroup: jitu
+    fsGroup: messi
+  volumes:
+   - name: my-vol  
+     persistantvoluClaim:
+        claimName: my-pv-claim
+  
+  container:
+    - name: secirity-context-demo-contaier
+      image:nginx:1.16.1
+      command: ["sh", "c", "sleep 1h"]
+      ports:
+        port: 80
+      VolumeMounts:
+        -name: my-vol
+         mountpath: "/mnt/data"
+      SecurityContext:
+        runAsUser: root
+        allowPrivilegeEscalation: false
+        #capabilities:
+          #add: ["NET_ADMIN", "SYS_TIME"]
+
+
+
+pull an image from private repository:
+----------------------------------------
+->you need to login to dockerhub
+$docker login
+
+->to see the auth credentials 
+$ cat ~./.docker/config.json
+
+-> create a secret with the auth credentials
+
+$kubectl create secret generic regcred --from-file=.dockerconfigjson=<path-to>/.docker/config.json --type=kubernetes.io/dockerconfigjson
+
+to make a customise secret-key:
+----------------------------
+apiVersion: v1
+data:
+  .dockerconfigjson: ewoJImF1dGhzIjogewoJCSJodHRwczovL2luZGV4LmRvY2tlci5pby92MS8iOiB7CgkJCSJhdXRoIjogImFtbDBkVEUwTXpwS2FYUjFRREE0TURVNU5BPT0iCgkJfQoJfSwKCSJIdHRwSGVhZGVycyI6IHsKCQkiVXNlci1BZ2VudCI6ICJEb2NrZXItQ2xpZW50LzE5LjAzLjEzIChsaW51eCkiCgl9Cn0=
+kind: Secret
+metadata:
+  name: dockerhub-secret
+  namespace: docker-secret
+type=kubernetes.io/dockerconfigjson
+
+
+to create secret on the command line:
+-------------------------------------
+$kubectl create secret docker-registry regcred --docker-server=https://hub.docker.com/ --docker-user=jitu143 --docker-password=Jitu@080594 --docker-email=jitu.nahak0805@gmail.com
+
+  
+
+use this secret to create container:
+-------------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+        name: simple-devops
+
+spec:
+        containers:
+                - name: simple-devops
+                  image: https://hub.docker.com/repository/docker/jitu143/simple-devops-image
+                  imagePullPolicy: Always
+        imagePullSecrets:
+                - name: docker-hub-key
+
+
+liveness probes:
+------------------
+->definign liveness probe, lets us know when to retsrt the container.
+
+apiversion: v1
+kind: pod
+metadata:
+  name: liveness-pod
+  label:
+    test: liveness
+spec:
+  container:
+   - name: liveness-test-container
+     image: busybox
+     args:
+     - bin/bash
+     - -c
+     - touch /tmp/health; sleep 30 sec; rm -rf /tmp/health;
+     livenessProbe:
+     exec:
+      command:
+       - cat
+       - /tmp/health
+     initialdelaySecond: 5
+     PeriodSeconds: 5
+   
+
+note:
+initialDelaySeconds : will wait for 5 senods before executing the first probe
+PeriodSeconds: will check the status for each 5 sec.
+
+
+liveness probe for http request:
+---------------------------------
+apiversion: v1
+kind: pod
+metadata:
+  name:liveness-test-pod-http
+  label:
+    test: liveness
+spec: 
+  containers:
+  - nmae: liveness-test-container-http
+    image: inginx:1.16.1
+    args:
+    - /server #the name of server in k8s cluste
+    livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    httpheaders:
+       - name: custome
+         value: awesome #we can define the hostnamne as here in this section
+    intialDelayseconds: 10
+    Period seconds: 5
+
+
+-> readiness probe: is used to define when the contanarised pod is ready to accept the traffic
+
+Readiness probe for socket connection:
+--------------------------------------
+
+apiversion: v1
+kind: pod
+metadata:
+  name: readiness-test-pod-socket-connection
+  label:
+    name:socket-connection
+spec:
+  containers:
+   - name: readiness-test-container-socket-connection
+     image: inginx:1.16.1
+     containerports:
+        port: 8080
+   readinessProbe:
+     tcpSocket:
+     port: 8080
+     intialdelaySecond: 5
+     PeriodSeconds: 10
+
+  livenessProbe:
+    tcpScoket:
+    port: 8080
+    intialdelaySeconds: 15
+    PeriodSeconds: 20
+
+
+
+startup probe:
+--------------
+->startup probe : is used to definehow much time should the container wait till it decleared as failed
+
+apiversion: v1
+kind: pod
+metadata:
+  name:startup-probe-test
+  label:
+   test: startupprobe
+
+spec:
+  containers:
+   - name: startupprobe-test-conatiner
+     image: busybox
+     
+  ports:
+   - name: liveness-port
+     containerPort: 8080
+     hostPort: 8080
+
+  livenessProbe:
+   httpGet:
+     path: /healthz
+     port: liveness-port
+   failureThreshold: 1
+   periodSeconds: 10
+
+  startupProbe:
+   httpGet:
+    path: /healthz
+    port: liveness-port
+   failureThreshold: 30
+   periodSeconds: 10
+
+
+
+
+
+assigning a pod to specific node:
+-----------------------------------
+apiversion: v1
+name: pod
+metadata:
+ name:pod-to-node
+ 
+spec:
+ nodeName: my-node
+ containers:
+  - name: node-container
+    image: inginx
+    containerPorts:
+       port: 8080
+    ImagePullPolicy: allways
+
+->to set label to a node
+$kubectl label node <node-name> disktype=ssd
+
+
+Assign Pods to Nodes using Node Affinity:
+------------------------------------------
+apiversion: v1
+kind: pod
+metadata:
+  name: node-affinity-pod
+
+spec:
+ affinity:
+  nodeAffinity:
+    requiredDuringSchedileIgnoredDuringExecution:
+      nodeSelectorTerms:
+       -matchExpressions:
+         -key: disk
+          operator: in 
+          values: ssd
+
+  containers:
+   - name: prefered-node-affinity-container
+     image: nginx
+     imagePullPolicy: ifNotPresent 
+
+assign to prefered node using affinity:
+---------------------------------
+
+apiversion: v1
+kind: pod
+metadata:
+ name: prefered-node-affinity-pod
+
+spec:
+  affinity:
+   nodeAffinity:
+     requiredDuringSchedilingIgnoredDuringExecution:
+      -weight: 1
+       preference:
+         - key:disk
+           operator: in
+           value: ssd
+
+  containers:
+   - name: prefered-node-affinity-container
+     image: nginx
+     imagePullPolicy: ifNotPresent  
+          
+        
+Configure Pod Initialization:
+------------------------------
+->This configuration is to see how a initcontainer initialise a pod before application container starts
+
+
+apiversion:v1
+kind: pod
+metadata:
+  name:Init-pod
+
+spec:
+  container:
+  - name: application-container
+    image: inginx
+    ports:
+     -containerPort: 80
+    imagePullPolicy: ifNotPresent
+  volumeMounts:
+   - name: workdir
+     mountPath: "/usr/share/nginx/html"
+
+  initContainer:
+   - name: init-container
+     image: busybox
+     command:
+      - "wget"
+      - "o"
+      - "/work-dir/index.html"
+      - http://info.cern.ch
+  volumeMounts:
+    - nmae: workdir
+      mountPath: "/work-dir"
+dnspolicy: default
+volumes:
+ - name: workdir
+   emptyDir: {}
+
+
+
+
+Attach Handlers to Container Lifecycle Events:
+-------------------------------------------
+-> Define postStart and preStop in pods life cycle
+
+apiversion: v1
+kind: pod
+metadata:
+  name: lifecycle-demo-pod
+  label:
+   test: lifecycle
+
+spec:
+ containers:
+  - name: lifeclycle-demo-container
+    image: inginx
+    port: 80
+    lifeCycle:
+     postStart:
+      exec:
+       command: ["/bin/bash","-c","echo "hello world from poststart" > /usr/share/message"]
+     preStop:
+       exec:
+        command:["/bin/bash", "-c", "nginx -s quit; while killall -0 nging; do sleep 10; done"]
+
+
+
+configmaps :
+-------------
+->Configmap is nothing but the configuration properties details of an application
+
+->configmap can be created from files, directories and literal values as well
+
+$kubectl create configmap properties-config --from-file=directory   -> will take all the required files from this directory to form the configmap
+
+$kubectl create configmap properties-configa  --from-file=directory/filenam  ->will take the mentioned file and create configmap
+
+$kubectl create configmap special-config  --from-literal=special.how=very --from-literal=special.type=charm  -> will create two value pairs special.how=very and special.type=charm
+
+$kubectl create configmap env-config  --from-env-file=/directory/file  ->environment file shpud have name=value format
+
+
+creating configmap using configmapGenerator
+-------------------------------------------
+$vim config.yml
+
+configMapGenerator:
+  -name : special-config
+   files:
+    - <directory>/file-name/
+
+from literals:
+-------------------
+configMapGenerator:
+  -name:literal-config
+   literals :
+    - special.how=very
+    - special.type=much
+
+
+defining key value pairs from config map in pods:
+-------------------------------------------------
+apiversion:v1
+kind:pod
+metadata:
+   name:config-pod
+
+spec:
+  container:
+   - name: config-container
+     image: busybox
+     args: ["/bin/bash","-c","env"]
+     env:
+    - name: SPECIAL_VALUE_KEY
+      valueFrom:
+        configMapKeyref:
+          name:literal-config
+          key=special.how
+   restartPolicy: never
+
+
+
+How to create a configmap in yml format:
+-----------------------------------------
+-> lets asume i amk using a mongodb app, so in the config map i will define the key values
+---------------------
+apiversion: v1
+kind: configmap
+metadata:
+  name:my-config
+
+data:
+ database: mangodb
+ database_url: mangodb://localhost:8080
+
+ keys: |
+ image.public.key: 567
+ rsa.public.key= 123
+
+Now assigning the configmap of mangodb database to pod
+----------------------------------------------------
+
+apiversion: v1
+kind: pod
+metadata:
+  name: config-test-pod
+
+spec:
+  container:
+   - name: config-test-container:
+     image: inginx
+     envFrom:
+       ConfigMapRef:
+         name:my-config
+
+
+mounting of comfigmap data to a volume:
+---------------------------------------
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dapi-test-pod
+spec:
+  containers:
+    - name: test-container
+      image: k8s.gcr.io/busybox
+      command: [ "/bin/sh", "-c", "ls /etc/config/" ]
+      volumeMounts:
+      - name: config-volume
+        mountPath: /etc/config
+  volumes:
+    - name: config-volume
+      configMap:
+        # Provide the name of the ConfigMap containing the files you want
+        # to add to the container
+        name: special-config
+  restartPolicy: Never
+
+
+->To enable containers to talk to each other in apod "shareProcessNamespace" should be true
+
+
+
+Customization.yml file can be used to merge or patch number of deployment files
+
+eg:
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+
+
+
+yml file to request memory:
+
+-------------------------
+apivesrions: apps/v1
+kinad: deployment
+metadata: 
+  name: nginx-deployment
+  labels:
+    app: web
+
+spec:
+  templates:
+    spec:
+      containers:
+       - name: nginx-container
+         resources:
+           limit:
+             memory: 500 MI
+
+
+
+
+now merge using customization:
+-------------------------
+resources:
+ - nginx-deployment
+
+ patchStrategicMerge:
+   - memory.yml
+
+
+$kubectl -k apply ./
+
+
+
+
+
+
+k8s commands to manage kubernetes object:
+--------------------------------------
+
+$kubectl run --generator=run-pod/v1 sample-inginx --image=nginx:1.16 --replicas=2 --port=80  ->will create a pod for teh container
+$kubectl expose deployments/<deployment-name> --replicas=2 --type=LoadBalancer  ->expose the deployment and creates two load balancers
+
+$kubectl create service nginx-service --type=LoadBalancer  --port=8080  ->Creates a service of LoadBalancer type
+
+$kubectl autoscale deployments/<deployment-name>  -> will autoscale deployment horizontal
+
+$kubectl set deployments/<deployment-name> --image=<new-image>  --records   ->will set the image to new one
+
+$kubectl anotate deployments/<deployment-name> --<anotate-patameter>=<value>   -> will change the anotation value
+
+$kubectl label deployments/<deployment-name> app=web  ->add the a label to a object
+
+$kubectl delete <type/name> ->will delete an object
+
+$kubectl edit <deployments/deloyment-name> -> we can edit a live deploytment file with this
+
+$kubectl get <object-name> -o yml -> will show the live deployment file in yml format
+
+$kubectl logs <object-type/name>  ->show logs of the deployment
+
+$kubectl describe <deployments/deployment-name> -> Prints aggregated detailed information about matching objects.  
+
+$kubectl patch deployments/<deployment-name> --patch "(patching-yml-file)" ->will patch a new configuration to the existing live deployment file
+
+
+
+kubernetes secrets:
+*********************
+
+from files:
+*****************
+
+echo -n "admin" |base64 > username.txt
+echo -n "Jitu@143" |base64 > password.txt
+
+$kubectl create secret generic <secret-name> --from-file=[key]=/<file-path>/filename
+
+$kubectl create secret genric my-secret \
+--from-file=username=./username.txt \
+--from-file=password=./password.txt
+
+note :
+if we do not define the key, it will by defualt take the file name
+
+docker-hub secret:
+*******************
+$kubectl create secret generic regcred --from-file=.dockerconfigjson=<path-to>/.docker/config.json --type=kubernetes.io/dockerconfigjson
+
+to make a customise secret-key:
+----------------------------
+apiVersion: v1
+data:
+  .dockerconfigjson: ewoJImF1dGhzIjogewoJCSJodHRwczovL2luZGV4LmRvY2tlci5pby92MS8iOiB7CgkJCSJhdXRoIjogImFtbDBkVEUwTXpwS2FYUjFRREE0TURVNU5BPT0iCgkJfQoJfSwKCSJIdHRwSGVhZGVycyI6IHsKCQkiVXNlci1BZ2VudCI6ICJEb2NrZXItQ2xpZW50LzE5LjAzLjEzIChsaW51eCkiCgl9Cn0=
+kind: Secret
+metadata:
+  name: dockerhub-secret
+  namespace: docker-secret
+type=kubernetes.io/dockerconfigjson
+
+
+to create secret on the command line:
+-------------------------------------
+$kubectl create secret docker-registry regcred --docker-server=https://hub.docker.com/ --docker-user=jitu143 --docker-password=Jitu@080594 --docker-email=jitu.nahak0805@gmail.com
+
+  
+
+
+from literals :
+*************
+kubectl cretae secret generic my-secret \
+--from-literal=username=admin \
+--from-literal=password='Jitu@143'
+
+decoding secret :
+****************
+$kubectl get secret <secret-name> -o jsonpath='{.data}'
+
+decoding password :
+**********************
+echo "password" | base64 --decode
+
+
+delete secret :
+*****************
+$kubectl delete secret <secret-name>
+
+
+
+definign secrets in yml format :
+*******************************
+apiversion: v1
+kind: secret
+metadata:
+  name:  my-secret
+
+spec:
+ data:
+  literals:
+   -username=jitu
+   -password="Jitu@143"
+
+
+defining secret in yml format using stringData :
+
+***********************************************
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysecret
+type: Opaque
+stringData:
+  config.yaml: |
+    apiUrl: "https://my.api.com/api/v1"
+    username: <user>
+    password: <password> 
+
+note : 
+For certain scenarios, you may wish to use the stringData field instead data.
+This field allows you to put a non-base64 encoded string directly into the Secret, 
+and the string will be encoded for you when the Secret is created or updated.
+
+-> Secrets are encoded using base64
+
+
+generating secret using kustomization.yml file :
+
+************************************************
+$vi kustomization.yml
+
+secretGenerator:
+ name: my-secret
+ namespace: secret
+
+ files:
+  - username=./username.txt
+  - password=./password.txt 
+
+Generatinf from literals:
+************************
+$vi kustomization.yml
+
+secretGenerator:
+ name: my-secret
+ namespace: secret
+  literals:
+  - username=admin
+  - password:"Jitu@143"
+ 
+
+defining command and arguments for a container:
+************************************************
+apiversion: v1 
+kind: pod
+metadata:
+  name: cmd-pod
+spec:
+ containers:
+  - nmae: cmd-container
+    image: busybox
+    env:
+     - name: msg
+       value: "hello world"
+    command:["/bin/echo"]
+    args: ["$(msg)"]
+
+note:
+if you define command and argument in container it will ignore what is definined in a image
+
+
+
+
+defining dependent varibales for conatiner :
+***********************************************
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dependent-envars-demo
+spec:
+  containers:
+    - name: dependent-envars-demo
+      args:
+        - while true; do echo -en '\n'; printf UNCHANGED_REFERENCE=$UNCHANGED_REFERENCE'\n'; printf SERVICE_ADDRESS=$SERVICE_ADDRESS'\n';printf ESCAPED_REFERENCE=$ESCAPED_REFERENCE'\n'; sleep 30; done;
+      command:
+        - sh
+        - -c
+      image: busybox
+      env:
+        - name: SERVICE_PORT
+          value: "80"
+        - name: SERVICE_IP
+          value: "172.17.0.1"
+        - name: UNCHANGED_REFERENCE
+          value: "$(PROTOCOL)://$(SERVICE_IP):$(SERVICE_PORT)"
+        - name: PROTOCOL
+          value: "https"
+        - name: SERVICE_ADDRESS
+          value: "$(PROTOCOL)://$(SERVICE_IP):$(SERVICE_PORT)"
+        - name: ESCAPED_REFERENCE
+          value: "$$(PROTOCOL)://$(SERVICE_IP):$(SERVICE_PORT)"
+
+
+
+Defining Environment varibales for a conatiner :
+************************************************
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: envar-demo
+  labels:
+    purpose: demonstrate-envars
+spec:
+  containers:
+  - name: envar-demo-container
+    image: gcr.io/google-samples/node-hello:1.0
+    env:
+    - name: DEMO_GREETING
+      value: "Hello from the environment"
+    - name: DEMO_FAREWELL
+      value: "Such a sweet sorrow"
+
+
+$apiVersion: v1
+kind: Pod
+metadata:
+  name: envar-demo
+  labels:
+    purpose: demonstrate-envars
+spec:
+  containers:
+  - name: envar-demo-container
+    image: gcr.io/google-samples/node-hello:1.0
+    env:
+    - name: DEMO_GREETING
+      value: "Hello from the environment"
+    - name: DEMO_FAREWELL
+      value: "Such a sweet sorrow"
+
+
+$kubectl exec envar-demo -- printenv   ->list the pods conatiner environment variables
+
+
+
+
+Use Pod fields as values for environment variables :
+*****************************************************
+
+store pod information:
+***********************
+apiversion: v1
+kind: pod
+metadata:
+ name: pod-value-env-var
+
+spec: 
+  containers:
+     - name: test-container
+       image: k8s.gcr.io/busybox
+       commands: ["sh" , " -c"]
+       args:
+         - while true; do
+            echo -en '\n';
+            printenv MY_NODE_NAME MY_POD_NAME MY_POD_NAMESPACE;
+            printenv MY_POD_IP MY_POD_SERVICE_ACCOUNT;
+            sleep 10;
+           done;
+       env:
+         - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: MY_POD_SERVICE_ACCOUNT
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.serviceAccountName
+  restartPolicy: Never
+
+
+
+
+Use Container fields as values for environment variables :
+***********************************************************
+store conatiner information :
+*****************************
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dapi-envars-resourcefieldref
+spec:
+  containers:
+    - name: test-container
+      image: k8s.gcr.io/busybox:1.24
+      command: [ "sh", "-c"]
+      args:
+      - while true; do
+          echo -en '\n';
+          printenv MY_CPU_REQUEST MY_CPU_LIMIT;
+          printenv MY_MEM_REQUEST MY_MEM_LIMIT;
+          sleep 10;
+        done;
+      resources:
+        requests:
+          memory: "32Mi"
+          cpu: "125m"
+        limits:
+          memory: "64Mi"
+          cpu: "250m"
+      env:
+        - name: MY_CPU_REQUEST
+          valueFrom:
+            resourceFieldRef:
+              containerName: test-container
+              resource: requests.cpu
+        - name: MY_CPU_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: test-container
+              resource: limits.cpu
+        - name: MY_MEM_REQUEST
+          valueFrom:
+            resourceFieldRef:
+              containerName: test-container
+              resource: requests.memory
+        - name: MY_MEM_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: test-container
+              resource: limits.memory
+  restartPolicy: Never
+
+
+
+
+Expose Pod Information to Containers Through Files :
+***************************************************
+
+store pod informations :
+***********************
+
+apiversion: v1
+kind: pod
+metadata:
+  name: downawardapi-volume-example
+  labels:
+    zone: us-east2
+    cluster: test-cluster
+    rack: rack-22
+  anotations:
+    build: two
+    builder: jitu
+
+spec:
+ conatiners:
+   -name: test-container
+    image: busybox
+    comand: ["sh", "-c"]
+    args:
+    - while true ; do
+        if [[ -e /etc/podinfo/labels]]; then
+         echo -en '/n/n' ; cat /etc/podinfo/labels; fi;
+        if [[ -e /etc/podinfo/anotations ]]; then
+         echo -en '/n/n' ; cat /etc/podinfo/anotations; fi;
+    volumeMounts:
+     - name: podinfo
+       mountPath: /etc/podinfo
+
+volumes:
+ - name: podinfo
+   downwardApi:
+    items:
+    - path: "labels"
+       fieldRef:
+        fileldPath: metadata.labels
+    - path: "anotations"
+        fieldRef:
+          fieldPath: metadata.anotations
+
+
+store container informations :
+**********************
+apiversion: v1
+kind: pod
+metadata:
+  name:downward-volume-exampl2
+
+spec:
+ conatiners:
+  - name: test-container
+    image: busybox
+    command: ["sh","-c"]
+    args:
+     - while true; do
+       echo -en '\n';
+          if [[ -e /etc/podinfo/cpu_limit ]]; then
+            echo -en '\n'; cat /etc/podinfo/cpu_limit; fi;
+          if [[ -e /etc/podinfo/cpu_request ]]; then
+            echo -en '\n'; cat /etc/podinfo/cpu_request; fi;
+          if [[ -e /etc/podinfo/mem_limit ]]; then
+            echo -en '\n'; cat /etc/podinfo/mem_limit; fi;
+          if [[ -e /etc/podinfo/mem_request ]]; then
+            echo -en '\n'; cat /etc/podinfo/mem_request; fi;
+        done;
+
+   resources:
+    requests:
+      memory:"50Mi"
+      cpu: "5m"
+    limits:
+      memory: "100Mi"
+      cpu: "15m"
+
+   volumeMounts:
+    - name: podinfo
+      mountPath: /etc/podinfo
+
+volume:
+ downwardApi:
+  items:
+   - path: "cpu_limit"
+      resourcefieldref:
+        containerName:test-container
+         resource: limits.cpu
+   - path: "cpu-requests"
+       resourcefieldref:
+        containerName: test-container
+          resource: requests.cpu
+
+   - path: "mem_limit"
+      resourceFieldref:
+       conatinerName: test-container
+         resource: limits.memory
+   - path: "mem_request"
+      resourceFieldref: "mem_request"
+       conatinerName: test-container
+        resource: requests.memory
+
+
+
+note:
+Capabilities of the Downward API :
+***********************************
+The following information is available to containers through environment variables and downwardAPI volumes:
+
+Information available via fieldRef:
+metadata.name - the pod's name
+metadata.namespace - the pod's namespace
+metadata.uid - the pod's UID
+metadata.labels['<KEY>'] - the value of the pod's label <KEY> (for example, metadata.labels['mylabel'])
+metadata.annotations['<KEY>'] - the value of the pod's annotation <KEY> (for example, metadata.annotations['myannotation'])
+Information available via resourceFieldRef:
+1) Container's CPU limit
+2) Container's CPU request
+3) Container's memory limit
+4) Container's memory request
+5) Container's hugepages limit (providing that the DownwardAPIHugePages feature gate is enabled)
+6) Container's hugepages request (providing that the DownwardAPIHugePages feature gate is enabled)
+7) Container's ephemeral-storage limit
+8) Container's ephemeral-storage request
+In addition, the following information is available through downwardAPI volume fieldRef:
+
+metadata.labels - all of the pod's labels, formatted as label-key="escaped-label-value" with one label per line
+metadata.annotations - all of the pod's annotations, formatted as annotation-key="escaped-annotation-value" with one annotation per line
+The following information is available through environment variables:
+
+status.podIP - the pod's IP address
+spec.serviceAccountName - the pod's service account name, available since v1.4.0-alpha.3
+spec.nodeName - the node's name, available since v1.4.0-alpha.3
+status.hostIP - the node's IP, available since v1.7.0-alpha.1
+

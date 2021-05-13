@@ -1,0 +1,149 @@
+httpd service
+********************
+
+---
+- hosts: localhost
+  remote_user: root
+  become: true
+
+  tasks:
+   - name: stop httpd
+     service:
+       name: httpd
+       state: stopped
+     ignore_errors: yes
+     register: result
+
+   - name: uninstall httpd
+     yum:
+       name: httpd
+       state: removed
+     ignore_errors: yes
+   - name: install httpd
+     yum:
+       name: httpd
+       state: installed
+     ignore_errors: yes
+   - name: copy html file
+     copy:
+      src: /opt/ansible/index.html
+      dest: /var/www/html
+     ignore_errors: yes
+     register: result
+     notify: start httpd
+   - name: show the stopping result
+     debug:
+       msg: "{{result}}"
+
+  handlers:
+   - name: start httpd
+     service:
+        name: httpd
+        state: started
+...
+
+
+******************************
+
+register result:
+********************
+---
+- hosts: localhost
+  remote_user: root
+  become: true
+
+
+  tasks:
+   - name: fetch the file
+     copy:
+      src: /etc/ansible/hosts
+      dest: /opt/ansible/hosts
+     ignore_errors: yes
+     register: result
+
+   - name: fetch output
+     debug:
+       msg: "{{result}}"
+...
+
+*****************************
+
+copy file:
+****************
+
+---
+- hosts: localhost
+  remote_user: root
+  become: true
+
+
+  tasks:
+   - name: fetch the file
+     copy:
+      src: /opt/ansible/index.html
+      dest: /var/www/html
+     ignore_errors: yes
+     register: result
+
+   - name: fetch output
+     debug:
+       msg: "{{result}}"
+...
+
+**************************************
+
+
+create user:
+*************************
+
+- hosts: localhost
+  remote_user: root
+  become: true
+  tasks:
+          - name: create user
+            user:
+                    name: "{{item}}"
+            with_items:
+               - jitu
+               - messi
+...
+
+*****************************************
+
+create role: $ansible-galaxy init <role_name>
+
+roles structure:
+
+[root@ip-172-31-29-207 ansible]# cd httpd-role/
+[root@ip-172-31-29-207 httpd-role]# ls -lrt
+total 4
+drwxr-xr-x 2 root root    6 Mar 28 08:14 templates
+-rw-r--r-- 1 root root 1328 Mar 28 08:14 README.md
+drwxr-xr-x 2 root root   22 Mar 28 08:14 defaults
+drwxr-xr-x 2 root root   22 Mar 28 08:14 meta
+drwxr-xr-x 2 root root   22 Mar 28 08:14 vars
+drwxr-xr-x 2 root root   39 Mar 28 08:14 tests
+drwxr-xr-x 2 root root   22 Mar 28 13:43 handlers
+drwxr-xr-x 2 root root   24 Mar 28 13:45 files
+drwxr-xr-x 2 root root   22 Mar 28 13:58 tasks
+[root@ip-172-31-29-207 httpd-role]#
+
+1)tasks/main.yml - the main list of tasks that the role executes.
+
+2)handlers/main.yml - handlers, which may be used within or outside this role.
+
+3)library/my_module.py - modules, which may be used within this role (see Embedding modules and plugins in roles for more information).
+
+4)defaults/main.yml - default variables for the role (see Using Variables for more information). These variables have the lowest priority of any variables available, and can be easily overridden by any other variable, including inventory variables.
+
+5)vars/main.yml - other variables for the role (see Using Variables for more information).
+
+6)files/main.yml - files that the role deploys.
+
+7)templates/main.yml - templates that the role deploys.
+
+8)meta/main.yml - metadata for the role, including role dependencies.
+
+note:
+Ansible only executes each role once, even if you define it multiple times and to run same the role again and again we need to define "allow_duplicates: true" in meta section
+
